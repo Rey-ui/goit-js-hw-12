@@ -5,10 +5,13 @@ import SimpleLightbox from "simplelightbox";
 // Додатковий імпорт стилів
 import 'simplelightbox/dist/simple-lightbox.min.css';
 import './css/styles.css';
+import axios from "axios";
 const API_KEY = '41917530-74216f8e6af2c90f64ec8c0b5';
 const URL = "https://pixabay.com/api/";
 const formEl = document.querySelector(".form-inline");
-const containerEl = document.querySelector(".card-container");
+const containerEl = document.querySelector(".card-container")
+const loadMoreBtn = document.querySelector(".label");
+const preloader = document.getElementById("preloader");
 formEl.addEventListener("submit", handleSearch);
 function showLoadingIndicator() {
     containerEl.innerHTML = '<div class="loader"></div>';
@@ -19,85 +22,145 @@ function hideLoadingIndicator() {
         loadingElement.remove();
     }
 }
-function handleSearch(event) {
+const hiddenClass = "is-hidden";
+function hide(button) {
+    button.classList.add(hiddenClass);
+}
+
+function show(button) {
+    button.classList.remove(hiddenClass);
+}
+
+function enable(button, preloader) {
+    preloader.classList.add(hiddenClass);
+    button.disabled = false;
+}
+
+function disable(button, preloader) {
+    preloader.classList.remove(hiddenClass);
+    button.disabled = true;
+}
+const queryParams = {
+    q: "",
+    page: 1,
+    maxPage: 0,
+    per_page: 40,
+};
+let currentSearchQuery = "";
+async function handleSearch(event) {
     event.preventDefault();
+    containerEl.innerHTML = "";
     const form = event.currentTarget;
     const picture = form.elements.picture.value.trim();
+    currentSearchQuery = picture;
     if (picture === "" || picture == null) {
         iziToast.error({
             title: "Error",
             message: `❌Sorry, there are no images matching your search query. Please, try again!`,
         })
         containerEl.innerHTML = "";
+        hide(loadMoreBtn);
         return;
     }
     showLoadingIndicator()
-    serchPicture(picture)
-        .then((data) => {
-            if (data.hits && data.hits.length > 0) {
-                const hits = data.hits;
-
-                let markup = "";
-                for (const hit of hits) {
-                    markup += createPictureMarkup(hit);
-                }
-                containerEl.innerHTML = markup;
-                const lightbox = new SimpleLightbox('.card-container a', {
-                    captionsData: 'alt',
-                    captionPosition: 'bottom',
-                    captionDelay: 250,
-                });
-                lightbox.refresh();
+    try {
+        const { hits, totalHits } = await serchPicture(picture);
+        if (hits && hits.length > 0) {
+            queryParams.maxPage = Math.ceil(totalHits / queryParams.per_page);
+            createPictureMarkup(hits, containerEl)
+            const lightbox = new SimpleLightbox('.card-container a', {
+                captionsData: 'alt',
+                captionPosition: 'bottom',
+                captionDelay: 250,
+            });
+            lightbox.refresh();
+            if (hits && hits.length > 0 && hits.length !== totalHits) {
+                show(loadMoreBtn);
+                loadMoreBtn.addEventListener("click", handleLoadMore);
             } else {
-                containerEl.innerHTML = "";
-                iziToast.error({
-                    title: "Error",
-                    message: `❌Sorry, there are no images matching your search query. Please, try again!`,
-                })
-
+                hide(loadMoreBtn);
             }
-        })
-        .finally(() => {
-            hideLoadingIndicator();
-            form.reset()
-        });
-}
-function serchPicture(picture) {
-    const urlParams = new URLSearchParams({
-        key: API_KEY,
-        q: picture,
-        image_type: "photo",
-        orientation: "horizontal",
-        safesearch: true
-    });
-    return fetch(`${URL}?${urlParams}`).then((res) => {
-        if (!res.ok) {
-            throw new Error(res.statusText);
+        } else {
+            containerEl.innerHTML = "";
+            iziToast.error({
+                title: "Error",
+                message: `❌Sorry, there are no images matching your search query. Please, try again!`,
+            })
+            hide(loadMoreBtn);
         }
-        return res.json();
+    }
+    catch (err) {
+        console.log(err);
+    }
+    finally {
+        hideLoadingIndicator();
+        form.reset()
+    };
+}
+function serchPicture(picture, page = 1) {
+    return axios.get(URL, {
+        params: {
+            key: API_KEY,
+            q: picture,
+            image_type: "photo",
+            orientation: "horizontal",
+            safesearch: true,
+            per_page: 40,
+            page,
+        }
+    }).then((res) => {
+        return res.data;
     });
 }
-function createPictureMarkup({ webformatURL, likes, views, comments, downloads, largeImageURL }) {
-    return `
-        <a href="${largeImageURL}" class= "picture-link">
-            <img src = "${webformatURL}">
-            <div class= "picture-content">
-                <div class= "picture-text">
-                    <span class= "picture-title">Likes</span>
-                    <span class= "picture-sub-title">${likes}</span>
-                </div>
-                <div class= "picture-text">
-                    <span class= "picture-title">Views</span>
-                    <span class= "picture-sub-title">${views}</span>
-                </div>
-                <div class= "picture-text">
-                    <span class= "picture-title">Comments</span>
-                    <span class= "picture-sub-title">${comments}</span>
-                </div>
-                <div class= "picture-text">
-                    <span class= "picture-title">Downloads</span>
-                    <span class= "picture-sub-title">${downloads}</span>
-                </div>
-            </div>
-        </a>`;
+function createPictureMarkup(hits, containerEl) {
+    const markup = hits.map(({ webformatURL, likes, views, comments, downloads, largeImageURL }) => `<a href="${largeImageURL}" class= "picture-link">
+    <img src = "${webformatURL}">
+    <div class= "picture-content">
+        <div class= "picture-text">
+            <span class= "picture-title">Likes</span>
+            <span class= "picture-sub-title">${likes}</span>
+        </div>
+        <div class= "picture-text">
+            <span class= "picture-title">Views</span>
+            <span class= "picture-sub-title">${views}</span>
+        </div>
+        <div class= "picture-text">
+            <span class= "picture-title">Comments</span>
+            <span class= "picture-sub-title">${comments}</span>
+        </div>
+        <div class= "picture-text">
+            <span class= "picture-title">Downloads</span>
+            <span class= "picture-sub-title">${downloads}</span>
+        </div>
+    </div>
+</a>`).join();
+    containerEl.insertAdjacentHTML("beforeend", markup);
+}
+async function handleLoadMore() {
+    queryParams.page += 1;
+    disable(loadMoreBtn, preloader);
+    try {
+        const { hits } = await serchPicture(currentSearchQuery, queryParams.page)
+        createPictureMarkup(hits, containerEl)
+        const cardHeight = containerEl.querySelector('.picture-link').getBoundingClientRect().height;
+        window.scrollBy({ top: cardHeight * 3, behavior: 'smooth' });
+        const lightbox = new SimpleLightbox('.card-container a', {
+            captionsData: 'alt',
+            captionPosition: 'bottom',
+            captionDelay: 250,
+        });
+        lightbox.refresh();
+    } catch (err) {
+        console.log(err);
+    } finally {
+        enable(loadMoreBtn, preloader);
+        if (queryParams.page === queryParams.maxPage) {
+            hide(loadMoreBtn);
+            iziToast.error({
+                title: "Error",
+                message: `"We're sorry, but you've reached the end of search results."`,
+            })
+            loadMoreBtn.removeEventListener("click", handleLoadMore);
+        }
+    }
 }
