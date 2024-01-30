@@ -8,20 +8,17 @@ import './css/styles.css';
 import axios from "axios";
 const API_KEY = '41917530-74216f8e6af2c90f64ec8c0b5';
 const URL = "https://pixabay.com/api/";
-const formEl = document.querySelector(".form-inline");
+const form = document.querySelector(".form-inline");
 const containerEl = document.querySelector(".card-container")
 const loadMoreBtn = document.querySelector(".label");
 const preloader = document.getElementById("preloader");
-formEl.addEventListener("submit", handleSearch);
-function showLoadingIndicator() {
-    containerEl.innerHTML = '<div class="loader"></div>';
-}
-function hideLoadingIndicator() {
-    const loadingElement = containerEl.querySelector('.loader');
-    if (loadingElement) {
-        loadingElement.remove();
-    }
-}
+const queryParams = {
+    q: "",
+    page: 1,
+    maxPage: 0,
+    per_page: 40,
+};
+let currentSearchQuery = "";
 const hiddenClass = "is-hidden";
 function hide(button) {
     button.classList.add(hiddenClass);
@@ -40,19 +37,23 @@ function disable(button, preloader) {
     preloader.classList.remove(hiddenClass);
     button.disabled = true;
 }
-const queryParams = {
-    q: "",
-    page: 1,
-    maxPage: 0,
-    per_page: 40,
-};
-let currentSearchQuery = "";
+function showLoadingIndicator() {
+    containerEl.innerHTML = '<div class="loader"></div>';
+}
+function hideLoadingIndicator() {
+    const loadingElement = containerEl.querySelector('.loader');
+    if (loadingElement) {
+        loadingElement.remove();
+    }
+}
+form.addEventListener("submit", handleSearch);
 async function handleSearch(event) {
     event.preventDefault();
     containerEl.innerHTML = "";
     const form = event.currentTarget;
     const picture = form.elements.picture.value.trim();
     currentSearchQuery = picture;
+    queryParams.page = 1;
     if (picture === "" || picture == null) {
         iziToast.error({
             title: "Error",
@@ -76,6 +77,7 @@ async function handleSearch(event) {
             lightbox.refresh();
             if (hits && hits.length > 0 && hits.length !== totalHits) {
                 show(loadMoreBtn);
+                loadMoreBtn.removeEventListener("click", handleLoadMore);
                 loadMoreBtn.addEventListener("click", handleLoadMore);
             } else {
                 hide(loadMoreBtn);
@@ -112,6 +114,38 @@ function serchPicture(picture, page = 1) {
         return res.data;
     });
 }
+async function handleLoadMore() {
+    queryParams.page += 1;
+    disable(loadMoreBtn, preloader);
+    try {
+        const { hits } = await serchPicture(currentSearchQuery, queryParams.page)
+        createPictureMarkup(hits, containerEl)
+        const cardHeight = containerEl.querySelector('.picture-link').getBoundingClientRect().height;
+        window.scrollBy({ top: cardHeight * 3, behavior: 'smooth' });
+        const lightbox = new SimpleLightbox('.card-container a', {
+            captionsData: 'alt',
+            captionPosition: 'bottom',
+            captionDelay: 250,
+        });
+        lightbox.refresh();
+    } catch (err) {
+        console.log(err);
+    } finally {
+        enable(loadMoreBtn, preloader);
+        if (queryParams.page >= queryParams.maxPage) {
+            hide(loadMoreBtn);
+            iziToast.error({
+                title: "Error",
+                message: `"We're sorry, but you've reached the end of search results."`,
+            })
+            loadMoreBtn.removeEventListener("click", handleLoadMore);
+        } else {
+            show(loadMoreBtn);
+            loadMoreBtn.removeEventListener("click", handleLoadMore);
+            loadMoreBtn.addEventListener("click", handleLoadMore);
+        }
+    }
+}
 function createPictureMarkup(hits, containerEl) {
     const markup = hits.map(({ webformatURL, likes, views, comments, downloads, largeImageURL }) => `<a href="${largeImageURL}" class= "picture-link">
     <img src = "${webformatURL}">
@@ -135,32 +169,4 @@ function createPictureMarkup(hits, containerEl) {
     </div>
 </a>`).join();
     containerEl.insertAdjacentHTML("beforeend", markup);
-}
-async function handleLoadMore() {
-    queryParams.page += 1;
-    disable(loadMoreBtn, preloader);
-    try {
-        const { hits } = await serchPicture(currentSearchQuery, queryParams.page)
-        createPictureMarkup(hits, containerEl)
-        const cardHeight = containerEl.querySelector('.picture-link').getBoundingClientRect().height;
-        window.scrollBy({ top: cardHeight * 3, behavior: 'smooth' });
-        const lightbox = new SimpleLightbox('.card-container a', {
-            captionsData: 'alt',
-            captionPosition: 'bottom',
-            captionDelay: 250,
-        });
-        lightbox.refresh();
-    } catch (err) {
-        console.log(err);
-    } finally {
-        enable(loadMoreBtn, preloader);
-        if (queryParams.page === queryParams.maxPage) {
-            hide(loadMoreBtn);
-            iziToast.error({
-                title: "Error",
-                message: `"We're sorry, but you've reached the end of search results."`,
-            })
-            loadMoreBtn.removeEventListener("click", handleLoadMore);
-        }
-    }
 }
